@@ -250,6 +250,21 @@ service cloud.firestore {
         && request.auth.token.email == 'bot@discord.risebunny.local';
     }
 
+    /* ── RısEBUNNY LAUNCHER CİHAZ KÖPRÜSÜ (ZORUNLU) ──
+       Launcher bir kod üretir, site Discord OAuth callback'inde bu dokümanı
+       `done` yapar, launcher kodu yoklar. Bu kural YOKSA (veya yayınlanmadıysa)
+       sitede Discord onayı başarılı olsa bile launcher hesabı BAĞLANMAZ.
+       Doküman sadece kod + Discord kimliği/kullanıcı adı/avatar tutar, sır yoktur;
+       kod 10 dakikada süresi dolar ve okununca silinir. */
+    match /launcher_logins/{code} {
+      allow read: if true;
+      allow create, update: if request.resource.data.keys().hasOnly(
+        ['status', 'id', 'username', 'avatar', 'createdAt'])
+        && (request.resource.data.status == 'pending'
+            || request.resource.data.status == 'done');
+      allow delete: if true;
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 }

@@ -185,14 +185,29 @@ export default async function handler(req, res) {
         const body = await readJson(req);
         if (body.action !== 'create') return res.status(400).json({ ok: false });
         const code = randCode();
-        await fetch(launcherDocUrl(code), {
+        const write = await fetch(launcherDocUrl(code), {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fields: {
             status: { stringValue: 'pending' },
             createdAt: { timestampValue: new Date().toISOString() }
           }})
+        }).catch((e) => {
+          console.error('[launcher] device create err:', e.message);
+          return null;
         });
+        /* Yazma reddedildiyse (Firestore kuralı eksik) kodu yine dönmek
+           launcher'ı sonsuza kadar 'pending' bekletir — açık hata dön. */
+        if (!write || !write.ok) {
+          const detail = write ? await write.text().catch(() => '') : '';
+          console.error('[launcher] device-store write rejected:',
+            write ? write.status : 'network', String(detail).slice(0, 300));
+          return res.status(503).json({
+            ok: false,
+            error: 'device-store-unavailable',
+            detail: 'launcher_logins Firestore kuralı eksik veya yayınlanmadı.'
+          });
+        }
         return res.json({ ok: true, code });
       }
 
@@ -202,6 +217,15 @@ export default async function handler(req, res) {
       if (!code) return res.status(400).json({ ok: false });
 
       const r = await fetch(launcherDocUrl(code));
+      if (r.status === 401 || r.status === 403) {
+        console.error('[launcher] device-store read denied:', r.status);
+        return res.status(503).json({
+          ok: false,
+          status: 'error',
+          error: 'device-store-unavailable',
+          detail: 'launcher_logins Firestore kuralı eksik veya yayınlanmadı.'
+        });
+      }
       if (!r.ok) return res.json({ ok: true, status: 'pending' });
 
       const d = await r.json();
