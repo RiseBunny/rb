@@ -14,6 +14,8 @@
     { "source": "/api/launcher/verify", "destination": "/api/launcher" },
     { "source": "/api/launcher/token", "destination": "/api/launcher" },
     { "source": "/api/launcher/device", "destination": "/api/launcher" },
+    { "source": "/api/launcher/profile", "destination": "/api/launcher" },
+    { "source": "/api/launcher/buy", "destination": "/api/launcher" },
     { "source": "/api/leaderboard/rich", "destination": "/api/leaderboard" },
     { "source": "/api/leaderboard/level", "destination": "/api/leaderboard" },
     { "source": "/api/stats", "destination": "/api/public" },

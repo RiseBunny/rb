@@ -110,11 +110,15 @@
     var rb = $('#btn-refresh-bans'); if (rb) rb.addEventListener('click', loadBans);
     var rm = $('#btn-refresh-messages'); if (rm) rm.addEventListener('click', loadMessages);
   }
+  /* Düzeltme: footer 5-tık jetonu veya Discord dönüşü varsa, eski cihaz
+     banı giriş ekranını engellemez (jeton fiziksel erişim kanıtıdır).
+     Jetonsuz doğrudan denemelerde ban aynen 404 verir. */
+  var hasEntryPass = hasToken || viaDiscord;
   db.collection('bans').doc(DEVICE_ID).get().then(function (snap) {
-    if (snap.exists) { show404(); return; }
+    if (snap.exists && !hasEntryPass) { show404(); return; }
     if (getSec().banned) setSec({ attempts: 0, banned: false });
     boot();
-  }).catch(function () { if (getSec().banned) { show404(); return; } boot(); });
+  }).catch(function () { if (getSec().banned && !hasEntryPass) { show404(); return; } boot(); });
   function loadAll() {
     Promise.all([
       db.collection('config').doc('site').get().catch(function () { return null; }),

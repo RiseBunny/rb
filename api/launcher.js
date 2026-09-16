@@ -236,5 +236,75 @@ export default async function handler(req, res) {
     }
   }
 
+  // ═══════════════ LAUNCHER PROFILE (bot parası + seviye) ═══════════════
+  if (op.endsWith('/profile')) {
+    let id = url.searchParams.get('id');
+    if (!id && req.method === 'POST') {
+      const body = await readJson(req);
+      id = body.id || body.discordId;
+    }
+    id = String(id || '').replace(/\D/g, '').slice(0, 20);
+    if (!id || id.length < 15) {
+      return res.status(400).json({ ok: false, error: 'Geçersiz Discord ID.' });
+    }
+    if (!bBase || !process.env.BOT_API_SECRET) {
+      return res.status(503).json({ ok: false, error: 'Bot API bağlı değil.' });
+    }
+    try {
+      const r = await fetch(`${bBase}/api/user/${encodeURIComponent(id)}`, {
+        headers: botHeaders()
+      });
+      if (!r.ok) return res.status(502).json({ ok: false, error: 'Bot verisi alınamadı.' });
+      const u = await r.json();
+      const avatar = u.avatar
+        ? (String(u.avatar).startsWith('http') ? u.avatar
+          : `https://cdn.discordapp.com/avatars/${id}/${u.avatar}.png?size=128`)
+        : '';
+      return res.json({
+        ok: true,
+        user: { id, username: u.username || '', avatar },
+        premium: Boolean(u.premium && u.premium.active),
+        game: {
+          money: Number(u.money ?? u.total ?? u.wallet ?? 0),
+          level: Number(u.level ?? 0),
+          xp: Number(u.xp ?? 0),
+          pets: Array.isArray(u.pets) ? u.pets.length : Number(u.pets ?? 0)
+        }
+      });
+    } catch (e) {
+      console.error('[launcher] profile err:', e.message);
+      return res.status(500).json({ ok: false, error: 'exception' });
+    }
+  }
+
+  // ═══════════════ LAUNCHER BUY (bot parasıyla cosmetic) ═══════════════
+  if (op.endsWith('/buy') && req.method === 'POST') {
+    const body = await readJson(req);
+    const id = String(body.id || '').replace(/\D/g, '').slice(0, 20);
+    const item = String(body.item || '').slice(0, 40);
+    const price = Number(body.price || 0);
+    if (!id || id.length < 15 || !item || !(price > 0)) {
+      return res.status(400).json({ ok: false, error: 'Geçersiz istek.' });
+    }
+    if (!bBase || !process.env.BOT_API_SECRET) {
+      return res.status(503).json({ ok: false, error: 'Bot API bağlı değil.' });
+    }
+    try {
+      const r = await fetch(`${bBase}/api/shop/buy`, {
+        method: 'POST',
+        headers: { ...botHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discordId: id, item, price, source: 'launcher' })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok !== true) {
+        return res.status(400).json({ ok: false, error: j.error || 'Bot satın almayı reddetti.' });
+      }
+      return res.json({ ok: true, newBalance: Number(j.newBalance ?? j.money ?? 0) });
+    } catch (e) {
+      console.error('[launcher] buy err:', e.message);
+      return res.status(500).json({ ok: false, error: 'exception' });
+    }
+  }
+
   return res.status(404).json({ error: 'not found', path: op });
 }
