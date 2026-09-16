@@ -278,9 +278,11 @@ export default async function handler(req, res) {
   }
 
   // ═══════════════ LAUNCHER BUY (bot parasıyla cosmetic) ═══════════════
+  // Bot `userId` + katalog ID bekler (bot.js SHOP_CATALOG: minecon2011,
+  // bunny-neon, anniversary15, ender-heart, bunny-gold). Bot `total` döner.
   if (op.endsWith('/buy') && req.method === 'POST') {
     const body = await readJson(req);
-    const id = String(body.id || '').replace(/\D/g, '').slice(0, 20);
+    const id = String(body.id || body.userId || '').replace(/\D/g, '').slice(0, 20);
     const item = String(body.item || '').slice(0, 40);
     const price = Number(body.price || 0);
     if (!id || id.length < 15 || !item || !(price > 0)) {
@@ -293,13 +295,14 @@ export default async function handler(req, res) {
       const r = await fetch(`${bBase}/api/shop/buy`, {
         method: 'POST',
         headers: { ...botHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ discordId: id, item, price, source: 'launcher' })
+        body: JSON.stringify({ userId: id, item, price, source: 'launcher' })
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.ok !== true) {
         return res.status(400).json({ ok: false, error: j.error || 'Bot satın almayı reddetti.' });
       }
-      return res.json({ ok: true, newBalance: Number(j.newBalance ?? j.money ?? 0) });
+      const wallet = Number(j.wallet || 0), bank = Number(j.bank || 0);
+      return res.json({ ok: true, newBalance: Number(j.total ?? (wallet + bank)) });
     } catch (e) {
       console.error('[launcher] buy err:', e.message);
       return res.status(500).json({ ok: false, error: 'exception' });
