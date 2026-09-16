@@ -402,33 +402,119 @@ function delSec(kapsam) {
   }
   delGonder(kapsam);
 }
+/* Firebase oturumunu bekler: kullanıcı giriş yapmış olsa bile auth durumu
+   birkaç saniye gecikebilir; eskiden bu yüzden "sayfayı yenile" deniyordu. */
+function delAuthBekle() {
+  return new Promise(function (resolve) {
+    var au = null;
+    try { au = firebase.auth(); } catch (e) { return resolve(null); }
+    if (au.currentUser) return resolve(au.currentUser);
+
+    var bitti = false;
+    var bitir = function (u) { if (bitti) return; bitti = true; resolve(u || null); };
+    var durdur = au.onAuthStateChanged(function (u) { if (u) { durdur(); bitir(u); } });
+    var kapandi = function () { try { durdur(); } catch (e) {} bitir(au.currentUser); };
+
+    /* 1) Köprü (/api/me) henüz gelmediyse bekle — eskiden bu yüzden hemen
+       "sayfayı yenile" deniyordu. */
+    var deneme = 0;
+    var bekle = function () {
+      var s = window.RBSession || {};
+      var fb = s.fb || {};
+      if (fb.email && fb.pw) {
+        au.signInWithEmailAndPassword(fb.email, fb.pw).catch(function () {});
+        return;
+      }
+      deneme += 1;
+      if (deneme < 24) { setTimeout(bekle, 500); return; }
+      /* 2) Hâlâ yoksa oturumu bir kez daha tazele. */
+      fetch('/api/me', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.ok && j.fb && j.fb.email && j.fb.pw) {
+            window.RBSession = window.RBSession || {};
+            window.RBSession.fb = j.fb;
+            au.signInWithEmailAndPassword(j.fb.email, j.fb.pw).catch(function () {});
+          }
+        })
+        .catch(function () {});
+    };
+    bekle();
+
+    setTimeout(kapandi, 20000);
+  });
+}
+
+/* Sahip logunda listelenecek "hangi platformda hangi veri var" özeti. */
+async function siteVeriOzet(db, uid) {
+  var satirlar = [];
+  var say = async function (col, alan, etiket) {
+    try {
+      var s = await db.collection(col).where(alan, '==', uid).get();
+      if (s.size) satirlar.push(etiket + ': ' + s.size + ' kayıt');
+    } catch (e) {}
+  };
+  await say('threads', 'authorId', 'Forum konusu');
+  await say('posts', 'authorId', 'Forum yanıtı');
+  await say('notifications', 'userId', 'Bildirim');
+  try {
+    var u = await db.collection('users').doc(uid).get();
+    if (u.exists) {
+      var d = u.data() || {};
+      satirlar.push('Forum hesabı' + (d.username ? ' (@' + String(d.username).slice(0, 30) + ')' : ''));
+      if (d.email) satirlar.push('Kayıtlı e-posta: ' + String(d.email).slice(0, 60));
+    }
+  } catch (e) {}
+  return { site: satirlar, bot: [] };
+}
+
 function delGonder(kapsam) {
   var area = $('#del-area');
   var L = function (tr, en) { return LANG === 'tr' ? tr : en; };
   var msg = area.querySelector('#del-msg');
   msg.textContent = L('Gönderiliyor…', 'Sending…');
-  var fbUser = null;
-  try { fbUser = (window.firebase && firebase.apps.length && firebase.auth) ? firebase.auth().currentUser : null; } catch (e) {}
-  if (!fbUser) { msg.textContent = L('Önce sayfayı yenileyip girişin tamamlanmasını bekle.', 'Reload and wait for sign-in to finish.'); __delState.armed = false; return; }
+
   var u = window.RBSession.user || {};
-  var payload = {
-    uid: fbUser.uid, username: (u.username || '').slice(0, 30),
-    discordId: String(u.id || '').slice(0, 30),
-    kapsam: kapsam, durum: 'bekliyor', sebep: '', createdAt: Date.now()
-  };
-  var db = firebase.firestore();
-  db.collection('silme_talepleri').add(payload).then(function (ref) {
-    return fetch('/api/deletion/request', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ docId: ref.id, kapsam: kapsam }) })
-      .then(function (r) { return r.json().catch(function () { return {}; }); })
-      .then(function () { return ref.id; });
+  var discordId = String(u.id || '').replace(/\D/g, '').slice(0, 30);
+  var username = String(u.username || '').slice(0, 30);
+  if (!discordId) {
+    __delState.armed = false;
+    msg.textContent = L('Discord kimliği bulunamadı. Çıkış yapıp Discord ile tekrar giriş yap.', 'Discord id missing. Log out and sign in with Discord again.');
+    return;
+  }
+
+  msg.textContent = L('Oturum doğrulanıyor…', 'Verifying session…');
+  delAuthBekle().then(function (fbUser) {
+    if (!fbUser) throw new Error(L('Site oturumu kurulamadı (Discord girişi tamamlanmamış olabilir). Sayfayı yenilemeden de talep gönderebilirsin: birkaç saniye sonra tekrar dene.', 'Could not establish the site session (Discord sign-in may be incomplete). Try again in a few seconds — no reload needed.'));
+    var db = firebase.firestore();
+    return siteVeriOzet(db, fbUser.uid).then(function (veri) {
+      var payload = {
+        uid: fbUser.uid, username: username, discordId: discordId,
+        kapsam: kapsam, durum: 'bekliyor', sebep: '', createdAt: Date.now()
+      };
+      return db.collection('silme_talepleri').add(payload).then(function (ref) {
+        return fetch('/api/deletion/request', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ docId: ref.id, kapsam: kapsam, discordId: discordId, username: username, veri: veri })
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (j) {
+            if (!r.ok || j.ok !== true) {
+              /* Sahip hiç haberdar olmadıysa kaydı bırakma. */
+              db.collection('silme_talepleri').doc(ref.id).delete().catch(function () {});
+              throw new Error((j && j.error) || L('Talep iletilemedi (bot çevrimdışı olabilir).', 'Request could not be delivered (bot may be offline).'));
+            }
+            return ref.id;
+          });
+        });
+      });
+    });
   }).then(function (docId) {
     __delState = { kapsam: kapsam, armed: false, docId: docId, timer: null };
-    msg.textContent = L('✅ Talep iletildi. Sahip onaylayınca işlem yapılır, sonuç DM ile bildirilir.', '✅ Request sent. It will be processed after owner approval, result via DM.');
+    msg.textContent = L('✅ Talep sahibe iletildi. Kabul/ret sonucu DM ile bildirilir.', '✅ Request delivered to the owner. The decision arrives via DM.');
     delDurumIzle(docId, kapsam);
   }).catch(function (e) {
     __delState.armed = false;
-    msg.textContent = '⚠️ ' + (e.message || e);
+    msg.textContent = '⚠️ ' + (e && e.message ? e.message : e);
   });
 }
 function delDurumIzle(docId, kapsam) {
