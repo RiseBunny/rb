@@ -260,11 +260,12 @@ export default async function handler(req, res) {
         ? (String(u.avatar).startsWith('http') ? u.avatar
           : `https://cdn.discordapp.com/avatars/${id}/${u.avatar}.png?size=128`)
         : '';
-      return res.json({
-        ok: true,
-        user: { id, username: u.username || '', avatar },
-        premium: Boolean(u.premium && u.premium.active),
-        game: {
+     return res.json({
+  ok: true,
+  user: { id, username: u.username || '', avatar },
+  premium: Boolean(u.premium && u.premium.active),
+  capes: Array.isArray(u.capes) ? u.capes : [],  // ✅ YENİ
+  game: {
           money: Number(u.money ?? u.total ?? u.wallet ?? 0),
           level: Number(u.level ?? 0),
           xp: Number(u.xp ?? 0),

@@ -115,7 +115,7 @@ export default async function handler(req, res) {
 
     // Launcher device bridge
     try {
-      const dm = String(next).match(/[?&]device=([A-Za-z0-9]{6})/);
+     const dm = String(next).match(/[?&]device=([A-Za-z0-9]{4,12})/);
       if (dm && PROJECT && FB_KEY) {
         console.log('[cb] launcher device bridge:', dm[1]);
         const dav = u.avatar

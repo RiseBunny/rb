@@ -9,7 +9,26 @@ export default function handler(req, res) {
     const redirect = `${base}${cbPath}`;
 
     const url = new URL(req.url, base);
-    const next = safeNext(url.searchParams.get('next'));
+    
+    // ✅ Launcher device kodu — next içinden VE doğrudan query'den al
+    let device = String(url.searchParams.get('device') || '')
+      .replace(/[^A-Za-z0-9]/g, '')
+      .slice(0, 8);
+    
+    let next = safeNext(url.searchParams.get('next'));
+    
+    // next içinde device varsa onu da yakala (?device=ABC123)
+    if (!device) {
+      const m = String(next).match(/[?&]device=([A-Za-z0-9]{4,12})/);
+      if (m) device = m[1];
+    }
+
+    // device'ı her zaman next'e ekle (varsa)
+    if (device) {
+      // Eski device'ı next'ten temizle, sonra ekle
+      next = next.replace(/[?&]device=[A-Za-z0-9]+/g, '');
+      next = next + (next.includes('?') ? '&' : '?') + 'device=' + device;
+    }
 
     const u = new URL('https://discord.com/api/oauth2/authorize');
     u.searchParams.set('client_id', CLIENT_ID);
@@ -18,7 +37,7 @@ export default function handler(req, res) {
     u.searchParams.set('scope', 'identify email');
     u.searchParams.set('state', Buffer.from(next).toString('base64url'));
 
-    console.log('[start] → Discord redirect_uri:', redirect);
+    console.log('[start] → Discord redirect_uri:', redirect, '| device:', device || '(yok)', '| next:', next);
     res.redirect(302, u.toString());
   } catch (e) {
     console.error('[start] FATAL:', e.message);
