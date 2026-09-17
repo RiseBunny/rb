@@ -8,7 +8,12 @@ const STATIC_SHOP = [
   { id: 'pet_kedi', ad: '🐱 Kedi', fiyat: 135000, tip: 'pet', premiumGerek: false },
   { id: 'pet_balik', ad: '🐠 Balık', fiyat: 162000, tip: 'pet', premiumGerek: false },
   { id: 'pet_aslan', ad: '🦁 Aslan', fiyat: 315000, tip: 'pet', premiumGerek: true },
-  { id: 'pet_kaplan', ad: '🐅 Kaplan', fiyat: 342000, tip: 'pet', premiumGerek: true }
+  { id: 'pet_kaplan', ad: '🐅 Kaplan', fiyat: 342000, tip: 'pet', premiumGerek: true },
+  { id: 'minecon2011', ad: '🏛️ Minecon 2011 Pelerini', fiyat: 100000, tip: 'cape', premiumGerek: false },
+  { id: 'bunny-neon', ad: '⚡ Bunny Neon Pelerini', fiyat: 200000, tip: 'cape', premiumGerek: false },
+  { id: 'anniversary15', ad: '💚 15. Yıl Creeper Pelerini', fiyat: 300000, tip: 'cape', premiumGerek: false },
+  { id: 'ender-heart', ad: '💜 Ender Heart Pelerini', fiyat: 400000, tip: 'cape', premiumGerek: false },
+  { id: 'bunny-gold', ad: '🐰 Bunny Gold Pelerini', fiyat: 500000, tip: 'cape', premiumGerek: false }
 ];
 
 export default async function handler(req, res) {
