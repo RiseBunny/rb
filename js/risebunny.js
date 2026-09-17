@@ -485,14 +485,22 @@ function delGonder(kapsam) {
 
   msg.textContent = L('Oturum doğrulanıyor…', 'Verifying session…');
   delAuthBekle().then(function (fbUser) {
-    if (!fbUser) throw new Error(L('Site oturumu kurulamadı (Discord girişi tamamlanmamış olabilir). Sayfayı yenilemeden de talep gönderebilirsin: birkaç saniye sonra tekrar dene.', 'Could not establish the site session (Discord sign-in may be incomplete). Try again in a few seconds — no reload needed.'));
-    var db = firebase.firestore();
-    return siteVeriOzet(db, fbUser.uid).then(function (veri) {
+    var db = null;
+    try { db = firebase.firestore(); } catch (e) { db = null; }
+    var uid = fbUser ? fbUser.uid : ('discord:' + discordId);
+    var ozetP = (fbUser && db) ? siteVeriOzet(db, fbUser.uid) : Promise.resolve({ site: [], bot: [] });
+    return ozetP.then(function (veri) {
       var payload = {
-        uid: fbUser.uid, username: username, discordId: discordId,
+        uid: uid, username: username, discordId: discordId,
         kapsam: kapsam, durum: 'bekliyor', sebep: '', createdAt: Date.now()
       };
-      return db.collection('silme_talepleri').add(payload).then(function (ref) {
+      var kayitP = (fbUser && db)
+        ? db.collection('silme_talepleri').add(payload)
+        : Promise.resolve({ id: 'web-' + discordId + '-' + Date.now().toString(36) });
+      // Firebase oturumu yoksa bile bot'a talep iletilir; site verisi onaysız silinmez,
+      // sahip kabul edince bot tarafı silinir ve kullanıcıya DM gider.
+      if (!fbUser && msg) msg.textContent = L('Site oturumu bulunamadı — talep Discord kimliğinle sahibe iletiliyor…', 'No site session — sending the request with your Discord id…');
+      return kayitP.then(function (ref) {
         return fetch('/api/deletion/request', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ docId: ref.id, kapsam: kapsam, discordId: discordId, username: username, veri: veri })
@@ -500,7 +508,7 @@ function delGonder(kapsam) {
           return r.json().catch(function () { return {}; }).then(function (j) {
             if (!r.ok || j.ok !== true) {
               /* Sahip hiç haberdar olmadıysa kaydı bırakma. */
-              db.collection('silme_talepleri').doc(ref.id).delete().catch(function () {});
+              if (fbUser && db) db.collection('silme_talepleri').doc(ref.id).delete().catch(function () {});
               throw new Error((j && j.error) || L('Talep iletilemedi (bot çevrimdışı olabilir).', 'Request could not be delivered (bot may be offline).'));
             }
             return ref.id;
@@ -537,8 +545,12 @@ function delDurumIzle(docId, kapsam) {
         if (kapsam === 'bot') {
           if (msg) msg.textContent = L('✅ Onaylandı — bot verilerin silindi (DM bildirimi de geldi).', '✅ Approved — bot data deleted (DM sent).');
           __delState = { kapsam: null, armed: false, docId: null, timer: null };
-        } else {
+        } else if (!String(docId || '').startsWith('web-')) {
           siteVeriSil(msg, L);
+        } else {
+          // Firebase'siz gönderilen talep: bot tarafı silindi, site için giriş gerekli.
+          if (msg) msg.textContent = L('✅ Onaylandı — bot verilerin silindi (DM de geldi). Site verilerin için Discord ile giriş yapıp talebi tekrar gönder.', '✅ Approved — bot data deleted (DM sent). Sign in with Discord and re-request for site data.');
+          __delState = { kapsam: null, armed: false, docId: null, timer: null };
         }
       }
     }).catch(function () {});
