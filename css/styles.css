@@ -256,6 +256,9 @@ button{cursor:pointer}
   padding:12px 54px 12px 20px;display:flex;align-items:center;justify-content:center;gap:12px;
   font-size:.85rem;text-align:center;background:var(--ink);color:#fff;
 }
+/* hidden attribute'u display:flex tarafından eziliyordu (X'e basınca banner
+   kapanmıyordu). Bu kural hidden'ı geri kazandırır. */
+.site-banner[hidden]{display:none!important}
 .site-banner.type-warning{background:#f59e0b;color:#111}
 .site-banner.type-success{background:#16a34a;color:#fff}
 .site-banner a{color:inherit;font-weight:700}
