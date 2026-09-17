@@ -35,11 +35,16 @@ export default async function handler(req, res) {
     const kapsam = ['bot', 'site', 'ikisi'].includes(body.kapsam) ? body.kapsam : 'ikisi';
     if (!docId) return res.status(400).json({ error: 'eksik alan' });
     if (!bBase || !bSec) return res.status(503).json({ error: 'bot çevrimdışı' });
+    /* Kullanıcının platform verileri (sahip logunda listelenir) aynen iletilir;
+       bot 429 dönerse (1 saat cooldown) durum + mesaj aynen taşınır. */
+    const hamVeri = body.veri && typeof body.veri === 'object' ? body.veri : {};
+    const liste = (v) => (Array.isArray(v) ? v.map(x => String(x).slice(0, 140)).slice(0, 25) : []);
+    const veri = { site: liste(hamVeri.site), bot: liste(hamVeri.bot) };
     try {
       const r = await fetch(`${bBase}/api/deletion/request`, {
         method: 'POST',
         headers: { ...botHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ docId, discordId: s.id, username: s.username || '', kapsam })
+        body: JSON.stringify({ docId, discordId: s.id, username: s.username || '', kapsam, veri })
       });
       const j = await r.json().catch(() => ({}));
       return res.status(r.status).json(j);
